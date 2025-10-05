@@ -1,15 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables');
+  console.warn('Missing Supabase environment variables. Some features may not work.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = supabaseUrl && supabaseAnonKey
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : null as any;
 
 export async function getTutorialProgress(walletAddress: string) {
+  if (!supabase) return null;
+
   const { data, error } = await supabase
     .from('tutorial_progress')
     .select('*')
@@ -25,6 +29,8 @@ export async function getTutorialProgress(walletAddress: string) {
 }
 
 export async function saveTutorialProgress(walletAddress: string, completed: boolean, skipped: boolean) {
+  if (!supabase) return null;
+
   const { data, error } = await supabase
     .from('tutorial_progress')
     .upsert({
@@ -48,6 +54,8 @@ export async function saveTutorialProgress(walletAddress: string, completed: boo
 }
 
 export async function getBattleHistory(playerAddress: string) {
+  if (!supabase) return [];
+
   const { data, error } = await supabase
     .from('battle_history')
     .select('*')
@@ -73,6 +81,8 @@ export async function saveBattleHistory(battle: {
   transaction_hash: string;
   battle_timestamp: string;
 }) {
+  if (!supabase) return null;
+
   const { data, error } = await supabase
     .from('battle_history')
     .upsert({
