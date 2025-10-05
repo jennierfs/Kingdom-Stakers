@@ -1,5 +1,6 @@
 import { Crown, Wallet, LogOut } from 'lucide-react';
 import { useWeb3 } from '../contexts/Web3Context';
+import { NotificationBell } from './NotificationBell';
 
 export function Header() {
   const { account, isConnected, isConnecting, connect, disconnect, walletName } = useWeb3();
@@ -27,6 +28,7 @@ export function Header() {
           <div className="flex items-center space-x-4">
             {isConnected ? (
               <>
+                <NotificationBell />
                 <div className="card-gradient px-4 py-2 rounded-lg flex flex-col">
                   <div className="flex items-center space-x-2 mb-1">
                     <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>

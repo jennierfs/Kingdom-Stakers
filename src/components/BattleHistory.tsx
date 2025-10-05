@@ -1,9 +1,8 @@
 import { Clock, Trophy, Skull, TrendingUp, TrendingDown } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { BattleHistoryBackground } from './BattleHistoryBackground';
-import { web3Service } from '../lib/web3';
 import { useWeb3 } from '../contexts/Web3Context';
-import { getBattleHistory, saveBattleHistory } from '../lib/supabase';
+import { useRealtimeBattles } from '../hooks/useRealtimeBattles';
 
 interface BattleRecord {
   id: number;
@@ -22,123 +21,33 @@ interface BattleHistoryProps {
 
 export function BattleHistory({ battles = [] }: BattleHistoryProps) {
   const { account, isConnected } = useWeb3();
-  const [realBattles, setRealBattles] = useState<BattleRecord[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { battles: realtimeBattles, loading } = useRealtimeBattles(account);
 
-  useEffect(() => {
-    if (isConnected && account) {
-      loadBattleHistory();
-    }
-  }, [account, isConnected]);
+  const battleRecords: BattleRecord[] = realtimeBattles.map((battle, index) => {
+    const isAttacker = battle.attacker_address.toLowerCase() === account?.toLowerCase();
+    const wonBattle = isAttacker ? battle.attacker_won : !battle.attacker_won;
+    const opponent = isAttacker ? battle.defender_address : battle.attacker_address;
+    const myPower = isAttacker ? Number(battle.attacker_power) : Number(battle.defender_power);
+    const opponentPower = isAttacker ? Number(battle.defender_power) : Number(battle.attacker_power);
+    const rewardAmount = Number(battle.battle_reward);
 
-  const loadBattleHistory = async () => {
-    if (!account) return;
-
-    try {
-      setLoading(true);
-      console.log('=== Loading Battle History ===');
-      console.log('Account:', account);
-
-      const cachedBattles = await getBattleHistory(account);
-      console.log('Cached battles from Supabase:', cachedBattles.length);
-
-      if (cachedBattles.length > 0) {
-        const battleRecords: BattleRecord[] = cachedBattles.map((battle, index) => ({
-          id: index,
-          timestamp: battle.battle_timestamp,
-          opponent: battle.opponent_address,
-          result: battle.won_battle ? 'victory' : 'defeat',
-          powerChange: battle.won_battle ? 100 : -50,
-          tokensChange: battle.won_battle ? battle.battle_reward : -battle.battle_reward,
-          myPower: 0,
-          opponentPower: 0
-        }));
-
-        setRealBattles(battleRecords);
-        console.log('Loaded battles from cache');
-      }
-
-      console.log('Fetching fresh events from blockchain...');
-      const events = await web3Service.getBattleHistory(account, 20);
-      console.log('Events found:', events.length);
-
-      const battleRecords: BattleRecord[] = [];
-
-      for (let i = 0; i < events.length; i++) {
-        const event = events[i];
-
-        if (!event.args) {
-          console.log('Event', i, 'has no args, skipping');
-          continue;
-        }
-
-        const attacker = event.args.attacker ? event.args.attacker.toLowerCase() : event.args[0]?.toLowerCase();
-        const defender = event.args.defender ? event.args.defender.toLowerCase() : event.args[1]?.toLowerCase();
-        const attackerLevel = event.args.attackerLevel || event.args[2];
-        const defenderLevel = event.args.defenderLevel || event.args[3];
-        const attackerPower = event.args.attackerPower || event.args[4];
-        const defenderPower = event.args.defenderPower || event.args[5];
-        const attackerWon = event.args.attackerWon !== undefined ? event.args.attackerWon : event.args[6];
-        const battleReward = event.args.reward !== undefined ? event.args.reward : event.args[7];
-        const eventTimestamp = event.args.timestamp !== undefined ? event.args.timestamp : event.args[8];
-
-        if (!attacker || !defender) {
-          console.log('Event', i, 'missing attacker or defender, skipping');
-          continue;
-        }
-
-        const isAttacker = attacker === account.toLowerCase();
-        const wonBattle = isAttacker ? attackerWon : !attackerWon;
-        const opponent = isAttacker ? defender : attacker;
-
-        const date = eventTimestamp ? new Date(Number(eventTimestamp) * 1000) : new Date();
-
-        const rewardAmount = battleReward ? Number(web3Service.formatTokenAmount(battleReward)) : 0;
-
-        const myPower = isAttacker ? (attackerPower ? Number(web3Service.formatTokenAmount(attackerPower)) : 0) : (defenderPower ? Number(web3Service.formatTokenAmount(defenderPower)) : 0);
-        const opponentPower = isAttacker ? (defenderPower ? Number(web3Service.formatTokenAmount(defenderPower)) : 0) : (attackerPower ? Number(web3Service.formatTokenAmount(attackerPower)) : 0);
-
-        await saveBattleHistory({
-          player_address: account,
-          opponent_address: opponent,
-          is_attacker: isAttacker,
-          won_battle: wonBattle,
-          battle_reward: rewardAmount,
-          block_number: Number(event.blockNumber),
-          transaction_hash: event.transactionHash,
-          battle_timestamp: date.toISOString()
-        }).catch(err => console.error('Error saving battle to Supabase:', err));
-
-        battleRecords.push({
-          id: i,
-          timestamp: date.toISOString(),
-          opponent: opponent,
-          result: wonBattle ? 'victory' : 'defeat',
-          powerChange: wonBattle ? 100 : -50,
-          tokensChange: wonBattle ? rewardAmount : -rewardAmount,
-          myPower: myPower,
-          opponentPower: opponentPower
-        });
-      }
-
-      console.log('Total battle records loaded:', battleRecords.length);
-      console.log('=== End Battle History Loading ===');
-
-      if (battleRecords.length > 0) {
-        setRealBattles(battleRecords);
-      }
-    } catch (error) {
-      console.error('Error loading battle history:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    return {
+      id: index,
+      timestamp: battle.timestamp,
+      opponent,
+      result: wonBattle ? 'victory' : 'defeat',
+      powerChange: wonBattle ? 100 : -50,
+      tokensChange: wonBattle ? rewardAmount : -rewardAmount,
+      myPower,
+      opponentPower
+    };
+  });
   const formatAddress = (address: string) => {
     if (!address) return '';
     return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
   };
 
-  const displayBattles = realBattles.length > 0 ? realBattles : battles;
+  const displayBattles = battleRecords.length > 0 ? battleRecords : battles;
 
   const getTimeAgo = (timestamp: string) => {
     const now = new Date();
