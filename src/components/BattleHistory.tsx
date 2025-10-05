@@ -74,8 +74,13 @@ export function BattleHistory({ battles = [] }: BattleHistoryProps) {
 
         const attacker = event.args.attacker ? event.args.attacker.toLowerCase() : event.args[0]?.toLowerCase();
         const defender = event.args.defender ? event.args.defender.toLowerCase() : event.args[1]?.toLowerCase();
-        const attackerWon = event.args.attackerWon !== undefined ? event.args.attackerWon : event.args[2];
-        const battleReward = event.args.battleReward !== undefined ? event.args.battleReward : event.args[3];
+        const attackerLevel = event.args.attackerLevel || event.args[2];
+        const defenderLevel = event.args.defenderLevel || event.args[3];
+        const attackerPower = event.args.attackerPower || event.args[4];
+        const defenderPower = event.args.defenderPower || event.args[5];
+        const attackerWon = event.args.attackerWon !== undefined ? event.args.attackerWon : event.args[6];
+        const battleReward = event.args.reward !== undefined ? event.args.reward : event.args[7];
+        const eventTimestamp = event.args.timestamp !== undefined ? event.args.timestamp : event.args[8];
 
         if (!attacker || !defender) {
           console.log('Event', i, 'missing attacker or defender, skipping');
@@ -86,10 +91,12 @@ export function BattleHistory({ battles = [] }: BattleHistoryProps) {
         const wonBattle = isAttacker ? attackerWon : !attackerWon;
         const opponent = isAttacker ? defender : attacker;
 
-        const block = await event.getBlock();
-        const date = new Date(Number(block.timestamp) * 1000);
+        const date = eventTimestamp ? new Date(Number(eventTimestamp) * 1000) : new Date();
 
         const rewardAmount = battleReward ? Number(web3Service.formatTokenAmount(battleReward)) : 0;
+
+        const myPower = isAttacker ? (attackerPower ? Number(web3Service.formatTokenAmount(attackerPower)) : 0) : (defenderPower ? Number(web3Service.formatTokenAmount(defenderPower)) : 0);
+        const opponentPower = isAttacker ? (defenderPower ? Number(web3Service.formatTokenAmount(defenderPower)) : 0) : (attackerPower ? Number(web3Service.formatTokenAmount(attackerPower)) : 0);
 
         await saveBattleHistory({
           player_address: account,
@@ -109,8 +116,8 @@ export function BattleHistory({ battles = [] }: BattleHistoryProps) {
           result: wonBattle ? 'victory' : 'defeat',
           powerChange: wonBattle ? 100 : -50,
           tokensChange: wonBattle ? rewardAmount : -rewardAmount,
-          myPower: 0,
-          opponentPower: 0
+          myPower: myPower,
+          opponentPower: opponentPower
         });
       }
 

@@ -351,8 +351,8 @@ export class Web3Service {
   async getBattleHistory(playerAddress: string, maxEvents: number = 20) {
     const contract = this.getContract();
 
-    const attackerFilter = contract.filters.BattleResult(playerAddress, null);
-    const defenderFilter = contract.filters.BattleResult(null, playerAddress);
+    const battleDetailsFilter = contract.filters.BattleDetailsUpdated(playerAddress);
+    const defenderDetailsFilter = contract.filters.BattleDetailsUpdated(null, playerAddress);
 
     const currentBlock = await this.provider!.getBlockNumber();
     const CHUNK_SIZE = 500;
@@ -373,8 +373,8 @@ export class Web3Service {
 
         try {
           const [attackerChunk, defenderChunk] = await Promise.all([
-            contract.queryFilter(attackerFilter, start, end),
-            contract.queryFilter(defenderFilter, start, end)
+            contract.queryFilter(battleDetailsFilter, start, end),
+            contract.queryFilter(defenderDetailsFilter, start, end)
           ]);
 
           if (attackerChunk.length > 0 || defenderChunk.length > 0) {
@@ -398,8 +398,8 @@ export class Web3Service {
               const smallStart = Math.max(start, smallEnd - smallerChunk + 1);
               try {
                 const [aChunk, dChunk] = await Promise.all([
-                  contract.queryFilter(attackerFilter, smallStart, smallEnd),
-                  contract.queryFilter(defenderFilter, smallStart, smallEnd)
+                  contract.queryFilter(battleDetailsFilter, smallStart, smallEnd),
+                  contract.queryFilter(defenderDetailsFilter, smallStart, smallEnd)
                 ]);
                 attackerEvents.push(...aChunk);
                 defenderEvents.push(...dChunk);
@@ -422,8 +422,8 @@ export class Web3Service {
 
           try {
             const [attackerChunk, defenderChunk] = await Promise.all([
-              contract.queryFilter(attackerFilter, start, end),
-              contract.queryFilter(defenderFilter, start, end)
+              contract.queryFilter(battleDetailsFilter, start, end),
+              contract.queryFilter(defenderDetailsFilter, start, end)
             ]);
 
             if (attackerChunk.length > 0 || defenderChunk.length > 0) {
@@ -458,6 +458,48 @@ export class Web3Service {
       .slice(0, maxEvents);
 
     return allEvents;
+  }
+
+  setupBattleListener(playerAddress: string, callback: (event: any) => void) {
+    const contract = this.getContract();
+
+    const attackerFilter = contract.filters.BattleDetailsUpdated(playerAddress);
+    const defenderFilter = contract.filters.BattleDetailsUpdated(null, playerAddress);
+
+    contract.on(attackerFilter, (...args) => {
+      console.log('New battle as attacker:', args);
+      callback(args[args.length - 1]);
+    });
+
+    contract.on(defenderFilter, (...args) => {
+      console.log('New battle as defender:', args);
+      callback(args[args.length - 1]);
+    });
+
+    return () => {
+      contract.off(attackerFilter);
+      contract.off(defenderFilter);
+    };
+  }
+
+  setupPlayerStatsListener(playerAddress: string, callback: (event: any) => void) {
+    const contract = this.getContract();
+    const filter = contract.filters.PlayerStatsUpdated(playerAddress);
+
+    contract.on(filter, (...args) => {
+      console.log('Player stats updated:', args);
+      callback(args[args.length - 1]);
+    });
+
+    return () => {
+      contract.off(filter);
+    };
+  }
+
+  async emitPlayerStats(playerAddress: string) {
+    const contract = this.getContract();
+    const tx = await contract.emitPlayerStats(playerAddress);
+    return await tx.wait();
   }
 }
 

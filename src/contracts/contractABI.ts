@@ -128,7 +128,14 @@ export const CONTRACT_ABI = [
   "event ComebackBonus(address indexed player, uint256 bonusMultiplier)",
   "event VeteranPenaltyApplied(address indexed veteran, address indexed newcomer, uint256 penaltyPercent)",
   "event DailyBattleLimitReached(address indexed player, uint256 battlesToday)",
-  "event TutorialCompleted(address indexed player, uint256 reward)"
+  "event TutorialCompleted(address indexed player, uint256 reward)",
+  "event PlayerStatsUpdated(address indexed player, uint256 level, uint256 totalBattles, uint256 battlesWon, uint256 kingdomSize, uint256 battleScore, uint256 winRate, uint256 timestamp)",
+  "event BattleDetailsUpdated(address indexed attacker, address indexed defender, uint256 attackerLevel, uint256 defenderLevel, uint256 attackerPower, uint256 defenderPower, bool attackerWon, uint256 reward, uint256 timestamp)",
+  "event KingdomStatsUpdated(address indexed player, uint256 kingdomSize, uint256 expansionCost, uint256 timestamp)",
+  "event LeaguePromotion(address indexed player, string oldLeague, string newLeague, uint256 newLeagueId, uint256 timestamp)",
+  "event WinRateUpdated(address indexed player, uint256 oldWinRate, uint256 newWinRate, uint256 totalBattles, uint256 timestamp)",
+  "event PlayerRankingChanged(address indexed player, uint256 oldRanking, uint256 newRanking, uint256 totalPlayers, uint256 timestamp)",
+  "function emitPlayerStats(address _player) external"
 ] as const;
 
 export const CORE_RPC_URL = "https://rpc.coredao.org";
