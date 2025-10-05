@@ -355,12 +355,34 @@ export class Web3Service {
     const defenderFilter = contract.filters.BattleResult(null, playerAddress);
 
     const currentBlock = await this.provider!.getBlockNumber();
-    const fromBlock = Math.max(0, currentBlock - 100000);
+    const CHUNK_SIZE = 5000;
+    const MAX_BLOCKS_TO_SCAN = 50000;
 
-    const [attackerEvents, defenderEvents] = await Promise.all([
-      contract.queryFilter(attackerFilter, fromBlock, currentBlock),
-      contract.queryFilter(defenderFilter, fromBlock, currentBlock)
-    ]);
+    const fromBlock = Math.max(0, currentBlock - MAX_BLOCKS_TO_SCAN);
+
+    const attackerEvents: any[] = [];
+    const defenderEvents: any[] = [];
+
+    for (let start = fromBlock; start <= currentBlock && (attackerEvents.length + defenderEvents.length) < maxEvents * 2; start += CHUNK_SIZE) {
+      const end = Math.min(start + CHUNK_SIZE - 1, currentBlock);
+
+      try {
+        const [attackerChunk, defenderChunk] = await Promise.all([
+          contract.queryFilter(attackerFilter, start, end),
+          contract.queryFilter(defenderFilter, start, end)
+        ]);
+
+        attackerEvents.push(...attackerChunk);
+        defenderEvents.push(...defenderChunk);
+
+        if (attackerEvents.length + defenderEvents.length >= maxEvents * 2) {
+          break;
+        }
+      } catch (error: any) {
+        console.error(`Error querying blocks ${start} to ${end}:`, error.message);
+        continue;
+      }
+    }
 
     const allEvents = [...attackerEvents, ...defenderEvents]
       .sort((a, b) => {
