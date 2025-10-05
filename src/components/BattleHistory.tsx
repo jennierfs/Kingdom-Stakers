@@ -45,18 +45,28 @@ export function BattleHistory({ battles = [] }: BattleHistoryProps) {
 
       for (let i = 0; i < events.length; i++) {
         const event = events[i];
-        const args = event.args;
 
-        if (!args) {
+        console.log(`Processing event ${i}:`, {
+          blockNumber: event.blockNumber,
+          transactionHash: event.transactionHash,
+          hasArgs: !!event.args
+        });
+
+        if (!event.args) {
           console.log('Event', i, 'has no args, skipping');
           continue;
         }
 
-        const attacker = args[0].toLowerCase();
-        const defender = args[1].toLowerCase();
-        const attackerWon = args[2];
-        const battleReward = args[3];
-        const timestamp = args[4];
+        const attacker = event.args.attacker ? event.args.attacker.toLowerCase() : event.args[0]?.toLowerCase();
+        const defender = event.args.defender ? event.args.defender.toLowerCase() : event.args[1]?.toLowerCase();
+        const attackerWon = event.args.attackerWon !== undefined ? event.args.attackerWon : event.args[2];
+        const battleReward = event.args.battleReward !== undefined ? event.args.battleReward : event.args[3];
+        const eventTimestamp = event.args.timestamp !== undefined ? event.args.timestamp : event.args[4];
+
+        if (!attacker || !defender) {
+          console.log('Event', i, 'missing attacker or defender, skipping');
+          continue;
+        }
 
         const isAttacker = attacker === account.toLowerCase();
         const wonBattle = isAttacker ? attackerWon : !attackerWon;
@@ -65,11 +75,15 @@ export function BattleHistory({ battles = [] }: BattleHistoryProps) {
         const block = await event.getBlock();
         const date = new Date(Number(block.timestamp) * 1000);
 
-        const rewardAmount = Number(web3Service.formatTokenAmount(battleReward));
+        const rewardAmount = battleReward ? Number(web3Service.formatTokenAmount(battleReward)) : 0;
 
         console.log(`Battle ${i}:`, {
+          attacker,
+          defender,
+          isAttacker,
+          attackerWon,
+          wonBattle,
           opponent,
-          result: wonBattle ? 'victory' : 'defeat',
           reward: rewardAmount,
           timestamp: date.toLocaleString()
         });
