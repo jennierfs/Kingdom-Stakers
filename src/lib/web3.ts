@@ -355,34 +355,99 @@ export class Web3Service {
     const defenderFilter = contract.filters.BattleResult(null, playerAddress);
 
     const currentBlock = await this.provider!.getBlockNumber();
-    const CHUNK_SIZE = 5000;
-    const MAX_BLOCKS_TO_SCAN = 50000;
-
-    const fromBlock = Math.max(0, currentBlock - MAX_BLOCKS_TO_SCAN);
+    const CHUNK_SIZE = 500;
+    const MAX_BLOCKS_TO_SCAN = 10000;
+    const INITIAL_RECENT_BLOCKS = 2000;
 
     const attackerEvents: any[] = [];
     const defenderEvents: any[] = [];
 
-    for (let start = fromBlock; start <= currentBlock && (attackerEvents.length + defenderEvents.length) < maxEvents * 2; start += CHUNK_SIZE) {
-      const end = Math.min(start + CHUNK_SIZE - 1, currentBlock);
+    console.log(`Scanning for battle history. Current block: ${currentBlock}`);
 
-      try {
-        const [attackerChunk, defenderChunk] = await Promise.all([
-          contract.queryFilter(attackerFilter, start, end),
-          contract.queryFilter(defenderFilter, start, end)
-        ]);
+    try {
+      console.log(`First trying recent blocks: ${currentBlock - INITIAL_RECENT_BLOCKS} to ${currentBlock}`);
+      const recentStart = Math.max(0, currentBlock - INITIAL_RECENT_BLOCKS);
 
-        attackerEvents.push(...attackerChunk);
-        defenderEvents.push(...defenderChunk);
+      for (let end = currentBlock; end > recentStart && (attackerEvents.length + defenderEvents.length) < maxEvents * 2; end -= CHUNK_SIZE) {
+        const start = Math.max(recentStart, end - CHUNK_SIZE + 1);
 
-        if (attackerEvents.length + defenderEvents.length >= maxEvents * 2) {
-          break;
+        try {
+          const [attackerChunk, defenderChunk] = await Promise.all([
+            contract.queryFilter(attackerFilter, start, end),
+            contract.queryFilter(defenderFilter, start, end)
+          ]);
+
+          if (attackerChunk.length > 0 || defenderChunk.length > 0) {
+            console.log(`Found ${attackerChunk.length + defenderChunk.length} events in blocks ${start}-${end}`);
+          }
+
+          attackerEvents.push(...attackerChunk);
+          defenderEvents.push(...defenderChunk);
+
+          if (attackerEvents.length + defenderEvents.length >= maxEvents * 2) {
+            break;
+          }
+
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (error: any) {
+          if (error.message?.includes('Block range is too large')) {
+            console.log(`Block range ${start}-${end} too large, trying smaller chunks`);
+
+            const smallerChunk = Math.floor(CHUNK_SIZE / 2);
+            for (let smallEnd = end; smallEnd > start; smallEnd -= smallerChunk) {
+              const smallStart = Math.max(start, smallEnd - smallerChunk + 1);
+              try {
+                const [aChunk, dChunk] = await Promise.all([
+                  contract.queryFilter(attackerFilter, smallStart, smallEnd),
+                  contract.queryFilter(defenderFilter, smallStart, smallEnd)
+                ]);
+                attackerEvents.push(...aChunk);
+                defenderEvents.push(...dChunk);
+                await new Promise(resolve => setTimeout(resolve, 100));
+              } catch (e) {
+                console.error(`Failed even with smaller chunk ${smallStart}-${smallEnd}`);
+              }
+            }
+          }
         }
-      } catch (error: any) {
-        console.error(`Error querying blocks ${start} to ${end}:`, error.message);
-        continue;
       }
+
+      if ((attackerEvents.length + defenderEvents.length) < maxEvents && recentStart > 0) {
+        console.log('Continuing scan into older blocks...');
+        const olderEnd = recentStart - 1;
+        const olderStart = Math.max(0, currentBlock - MAX_BLOCKS_TO_SCAN);
+
+        for (let end = olderEnd; end > olderStart && (attackerEvents.length + defenderEvents.length) < maxEvents * 2; end -= CHUNK_SIZE) {
+          const start = Math.max(olderStart, end - CHUNK_SIZE + 1);
+
+          try {
+            const [attackerChunk, defenderChunk] = await Promise.all([
+              contract.queryFilter(attackerFilter, start, end),
+              contract.queryFilter(defenderFilter, start, end)
+            ]);
+
+            if (attackerChunk.length > 0 || defenderChunk.length > 0) {
+              console.log(`Found ${attackerChunk.length + defenderChunk.length} events in blocks ${start}-${end}`);
+            }
+
+            attackerEvents.push(...attackerChunk);
+            defenderEvents.push(...defenderChunk);
+
+            if (attackerEvents.length + defenderEvents.length >= maxEvents * 2) {
+              break;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 100));
+          } catch (error: any) {
+            console.error(`Error querying blocks ${start} to ${end}:`, error.message?.substring(0, 100));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Fatal error in battle history scan:', error);
     }
+
+    console.log(`Total events found: ${attackerEvents.length + defenderEvents.length}`);
 
     const allEvents = [...attackerEvents, ...defenderEvents]
       .sort((a, b) => {

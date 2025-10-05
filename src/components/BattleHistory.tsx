@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { BattleHistoryBackground } from './BattleHistoryBackground';
 import { web3Service } from '../lib/web3';
 import { useWeb3 } from '../contexts/Web3Context';
+import { getBattleHistory, saveBattleHistory } from '../lib/supabase';
 
 interface BattleRecord {
   id: number;
@@ -38,6 +39,26 @@ export function BattleHistory({ battles = [] }: BattleHistoryProps) {
       console.log('=== Loading Battle History ===');
       console.log('Account:', account);
 
+      const cachedBattles = await getBattleHistory(account);
+      console.log('Cached battles from Supabase:', cachedBattles.length);
+
+      if (cachedBattles.length > 0) {
+        const battleRecords: BattleRecord[] = cachedBattles.map((battle, index) => ({
+          id: index,
+          timestamp: battle.battle_timestamp,
+          opponent: battle.opponent_address,
+          result: battle.won_battle ? 'victory' : 'defeat',
+          powerChange: battle.won_battle ? 100 : -50,
+          tokensChange: battle.won_battle ? battle.battle_reward : -battle.battle_reward,
+          myPower: 0,
+          opponentPower: 0
+        }));
+
+        setRealBattles(battleRecords);
+        console.log('Loaded battles from cache');
+      }
+
+      console.log('Fetching fresh events from blockchain...');
       const events = await web3Service.getBattleHistory(account, 20);
       console.log('Events found:', events.length);
 
@@ -45,12 +66,6 @@ export function BattleHistory({ battles = [] }: BattleHistoryProps) {
 
       for (let i = 0; i < events.length; i++) {
         const event = events[i];
-
-        console.log(`Processing event ${i}:`, {
-          blockNumber: event.blockNumber,
-          transactionHash: event.transactionHash,
-          hasArgs: !!event.args
-        });
 
         if (!event.args) {
           console.log('Event', i, 'has no args, skipping');
@@ -61,7 +76,6 @@ export function BattleHistory({ battles = [] }: BattleHistoryProps) {
         const defender = event.args.defender ? event.args.defender.toLowerCase() : event.args[1]?.toLowerCase();
         const attackerWon = event.args.attackerWon !== undefined ? event.args.attackerWon : event.args[2];
         const battleReward = event.args.battleReward !== undefined ? event.args.battleReward : event.args[3];
-        const eventTimestamp = event.args.timestamp !== undefined ? event.args.timestamp : event.args[4];
 
         if (!attacker || !defender) {
           console.log('Event', i, 'missing attacker or defender, skipping');
@@ -77,16 +91,16 @@ export function BattleHistory({ battles = [] }: BattleHistoryProps) {
 
         const rewardAmount = battleReward ? Number(web3Service.formatTokenAmount(battleReward)) : 0;
 
-        console.log(`Battle ${i}:`, {
-          attacker,
-          defender,
-          isAttacker,
-          attackerWon,
-          wonBattle,
-          opponent,
-          reward: rewardAmount,
-          timestamp: date.toLocaleString()
-        });
+        await saveBattleHistory({
+          player_address: account,
+          opponent_address: opponent,
+          is_attacker: isAttacker,
+          won_battle: wonBattle,
+          battle_reward: rewardAmount,
+          block_number: Number(event.blockNumber),
+          transaction_hash: event.transactionHash,
+          battle_timestamp: date.toISOString()
+        }).catch(err => console.error('Error saving battle to Supabase:', err));
 
         battleRecords.push({
           id: i,
@@ -102,10 +116,12 @@ export function BattleHistory({ battles = [] }: BattleHistoryProps) {
 
       console.log('Total battle records loaded:', battleRecords.length);
       console.log('=== End Battle History Loading ===');
-      setRealBattles(battleRecords);
+
+      if (battleRecords.length > 0) {
+        setRealBattles(battleRecords);
+      }
     } catch (error) {
       console.error('Error loading battle history:', error);
-      console.error('Full error:', JSON.stringify(error, null, 2));
     } finally {
       setLoading(false);
     }
